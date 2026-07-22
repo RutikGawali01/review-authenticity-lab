@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Review Authenticity Lab</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="popup.css" />
+</head>
+<body>
+
+  <!-- Header -->
+  <header class="popup-header">
+    <div class="header-brand">
+      <div class="brand-icon" aria-hidden="true">
+        <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <path d="M12 2L3 7V12C3 16.55 6.84 20.74 12 22C17.16 20.74 21 16.55 21 12V7L12 2Z"
+                fill="url(#shieldGrad)" />
+          <path d="M9 12L11 14L15 10" stroke="white" stroke-width="2"
+                stroke-linecap="round" stroke-linejoin="round"/>
+          <defs>
+            <linearGradient id="shieldGrad" x1="3" y1="2" x2="21" y2="22"
+                            gradientUnits="userSpaceOnUse">
+              <stop offset="0%" stop-color="#818cf8"/>
+              <stop offset="100%" stop-color="#6366f1"/>
+            </linearGradient>
+          </defs>
+        </svg>
+      </div>
+      <div class="brand-text">
+        <span class="brand-name">Review Lab</span>
+        <span class="brand-version">v0.1.0</span>
+      </div>
+    </div>
+  </header>
+
+  <!-- Main Content -->
+  <main class="popup-main">
+
+    <!-- Page Status Card -->
+    <section class="status-card" id="status-card" aria-live="polite">
+
+      <!-- Loading state -->
+      <div class="state state--loading" id="state-loading" hidden>
+        <div class="spinner" aria-label="Loading"></div>
+        <p class="state-text">Detecting page…</p>
+      </div>
+
+      <!-- Unsupported state -->
+      <div class="state state--unsupported" id="state-unsupported" hidden>
+        <div class="state-icon state-icon--neutral" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="currentColor">
+            <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-2h2v2zm0-4h-2V7h2v6z"/>
+          </svg>
+        </div>
+        <p class="state-text state-text--primary">Not a review page</p>
+        <p class="state-text state-text--secondary">
+          Navigate to an Amazon product or Google Play app page to begin analysis.
+        </p>
+      </div>
+
+      <!-- Supported state (idle / active) -->
+      <div class="state state--supported" id="state-supported" hidden>
+        <div class="product-info">
+          <div class="platform-badge" id="platform-badge"></div>
+          <p class="product-title" id="product-title">—</p>
+        </div>
+
+        <div class="metrics-row" id="metrics-row" hidden>
+          <div class="metric">
+            <span class="metric-value" id="metric-reviews">—</span>
+            <span class="metric-label">Reviews</span>
+          </div>
+          <div class="metric-divider" aria-hidden="true"></div>
+          <div class="metric">
+            <span class="metric-value" id="metric-signals">—</span>
+            <span class="metric-label">Signals</span>
+          </div>
+          <div class="metric-divider" aria-hidden="true"></div>
+          <div class="metric">
+            <span class="metric-value" id="metric-risk">—</span>
+            <span class="metric-label">Risk</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Analysis in-progress state -->
+      <div class="state state--analyzing" id="state-analyzing" hidden>
+        <div class="progress-ring-container" aria-label="Analyzing reviews">
+          <svg class="progress-ring" viewBox="0 0 48 48">
+            <circle class="progress-ring__track" cx="24" cy="24" r="20" />
+            <circle class="progress-ring__fill" cx="24" cy="24" r="20"
+                    id="progress-ring-fill" />
+          </svg>
+          <div class="progress-icon" aria-hidden="true">🔍</div>
+        </div>
+        <p class="state-text state-text--primary" id="analysis-status-text">Extracting reviews…</p>
+      </div>
+
+      <!-- Error state -->
+      <div class="state state--error" id="state-error" hidden>
+        <div class="state-icon state-icon--error" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="currentColor">
+            <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-2h2v2zm0-4h-2V7h2v6z"/>
+          </svg>
+        </div>
+        <p class="state-text state-text--primary">Analysis failed</p>
+        <p class="state-text state-text--secondary" id="error-message"></p>
+      </div>
+
+    </section>
+
+    <!-- Action Buttons -->
+    <div class="popup-actions">
+
+      <button
+        class="btn btn--primary"
+        id="btn-analyze"
+        type="button"
+        disabled
+        aria-label="Analyze reviews on this page"
+      >
+        <svg class="btn-icon" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+          <path d="M21 21L16.657 16.657M6.944 17.944A8 8 0 1117.944 6.944 8 8 0 016.944 17.944z"
+                stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+        </svg>
+        Analyze Reviews
+      </button>
+
+      <button
+        class="btn btn--secondary"
+        id="btn-open-panel"
+        type="button"
+        aria-label="Open detailed analysis panel"
+      >
+        <svg class="btn-icon" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+          <rect x="3" y="3" width="18" height="18" rx="2" stroke="currentColor" stroke-width="2"/>
+          <path d="M9 3v18" stroke="currentColor" stroke-width="2"/>
+        </svg>
+        Open Panel
+      </button>
+
+    </div>
+
+  </main>
+
+  <!-- Footer -->
+  <footer class="popup-footer">
+    <span>On-device analysis · No data leaves your browser</span>
+  </footer>
+
+  <script type="module" src="popup.js"></script>
+</body>
+</html>

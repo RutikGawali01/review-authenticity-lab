@@ -1,0 +1,18 @@
+{
+  "meta": {
+    "capturedAt": "2026-07-19T09:00:00Z",
+    "platform": "amazon",
+    "productId": "B09G9FPHY6",
+    "snapshotId": "snap_B09G9FPHY6_1721379600000",
+    "totalReviews": 11,
+    "averageRating": 3.9,
+    "ratingBreakdown": { "1": 0, "2": 2, "3": 1, "4": 2, "5": 6 },
+    "verifiedCount": 5
+  },
+  "delta": {
+    "reviewsAdded": 2,
+    "averageRatingChange": -0.2,
+    "newReviewDates": ["2026-07-19T00:00:00Z", "2026-07-19T00:05:00Z"],
+    "note": "Two new reviews appeared within 5 minutes of each other — possible coordinated posting."
+  }
+}
