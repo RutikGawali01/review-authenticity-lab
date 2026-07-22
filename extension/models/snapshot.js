@@ -1,132 +1,47 @@
 /**
  * @module models/snapshot
- * @description Factory and type definition for the Snapshot data model.
- *
- * A Snapshot represents the complete set of reviews captured from a product page
- * at a specific point in time. Snapshots are the primary unit of persistence in
- * IndexedDB and the foundation for time-series analysis (detecting review bursts,
- * deletions, and rating manipulation over days/weeks).
- *
- * WHY Snapshot as a separate model from Review:
- * - A product can be analyzed multiple times. Each analysis run produces a new
- *   snapshot, enabling temporal comparison.
- * - Snapshots aggregate metadata (total count, average rating) that would be
- *   expensive to recompute from individual reviews each time.
+ * @description Factory for the Snapshot model.
+ * Groups a set of reviews captured at a specific point in time.
  */
 
-import { nowMs, toIsoDate } from '../utils/helpers.js';
-
-// ─── Type Documentation ───────────────────────────────────────────────────────
+import { nowMs } from '../utils/helpers.js';
 
 /**
- * @typedef {Object} SnapshotMeta
- * @property {number}      totalReviews    - Total reviews in this snapshot.
- * @property {number|null} averageRating   - Mean rating across all reviews (null if no ratings).
- * @property {number}      verifiedCount   - Count of verified-purchase reviews.
- * @property {Object}      ratingBreakdown - Map of rating (1–5) to count.
- * @property {number}      ratingBreakdown[1]
- * @property {number}      ratingBreakdown[2]
- * @property {number}      ratingBreakdown[3]
- * @property {number}      ratingBreakdown[4]
- * @property {number}      ratingBreakdown[5]
+ * @typedef {Object} SnapshotMetrics
+ * @property {number} totalReviews  - Number of reviews in this snapshot.
+ * @property {number} averageRating - Mean rating across all reviews.
  */
 
 /**
  * @typedef {Object} Snapshot
- * @property {string}       id            - Unique snapshot ID.
- * @property {string}       productId     - Platform-specific product identifier.
- * @property {string}       platform      - PLATFORMS constant.
- * @property {string}       productUrl    - URL of the product page.
- * @property {string}       productTitle  - Title of the product (if extractable).
- * @property {string[]}     reviewIds     - Ordered list of Review IDs in this snapshot.
- * @property {SnapshotMeta} meta          - Aggregate statistics.
- * @property {number}       capturedAtMs  - UTC timestamp when the snapshot was taken.
- * @property {string}       capturedAtIso - ISO 8601 representation of capturedAtMs.
- * @property {string|null}  analysisId    - ID of the associated analysis run, if complete.
+ * @property {string}          id           - Unique identifier (e.g. snap_<productId>_<timestamp>).
+ * @property {string}          productId    - Foreign key linking to Product.
+ * @property {string[]}        reviewIds    - Array of associated Review IDs.
+ * @property {number}          capturedAtMs - UTC timestamp of capture.
+ * @property {SnapshotMetrics} metrics      - Simple metrics summary.
  */
-
-// ─── Factory ──────────────────────────────────────────────────────────────────
 
 /**
- * Creates a frozen Snapshot from a product URL, platform, and an array of Reviews.
+ * Creates and validates a frozen Snapshot object.
  *
- * @param {Object}   opts
- * @param {string}   opts.productId    - Platform-specific product ID.
- * @param {string}   opts.platform     - PLATFORMS constant.
- * @param {string}   opts.productUrl   - Source URL.
- * @param {string}   [opts.productTitle] - Product display name.
- * @param {import('./review.js').Review[]} opts.reviews - Extracted reviews.
- * @returns {Snapshot}
+ * @param {Object} raw
+ * @returns {Snapshot|null} Frozen Snapshot object, or null if validation fails.
  */
-export function createSnapshot({ productId, platform, productUrl, productTitle = '', reviews }) {
-  if (!productId || !platform || !productUrl) {
-    throw new Error('[Snapshot] productId, platform, and productUrl are required.');
-  }
+export function createSnapshot(raw) {
+  if (!raw || typeof raw !== 'object') return null;
+  if (!raw.productId || !Array.isArray(raw.reviewIds)) return null;
 
-  if (!Array.isArray(reviews)) {
-    throw new Error('[Snapshot] reviews must be an array.');
-  }
-
-  const capturedAtMs = nowMs();
-  const id           = generateSnapshotId(productId, capturedAtMs);
+  const capturedAtMs = raw.capturedAtMs ?? nowMs();
+  const id = raw.id ?? `snap_${raw.productId}_${capturedAtMs}`;
 
   return Object.freeze({
     id,
-    productId,
-    platform,
-    productUrl,
-    productTitle,
-    reviewIds:    Object.freeze(reviews.map(r => r.id)),
-    meta:         Object.freeze(computeMeta(reviews)),
+    productId: String(raw.productId).trim(),
+    reviewIds: Object.freeze([...raw.reviewIds]),
     capturedAtMs,
-    capturedAtIso: toIsoDate(capturedAtMs),
-    analysisId:   null,
+    metrics: Object.freeze({
+      totalReviews: raw.metrics?.totalReviews || 0,
+      averageRating: raw.metrics?.averageRating || 0,
+    })
   });
-}
-
-// ─── Private Helpers ──────────────────────────────────────────────────────────
-
-/**
- * Generates a snapshot ID from a product ID and timestamp.
- * Format: snap_<productId-hash>_<timestamp>
- *
- * @param {string} productId
- * @param {number} timestampMs
- * @returns {string}
- */
-function generateSnapshotId(productId, timestampMs) {
-  return `snap_${productId}_${timestampMs}`;
-}
-
-/**
- * Computes aggregate statistics from an array of Review objects.
- *
- * @param {import('./review.js').Review[]} reviews
- * @returns {SnapshotMeta}
- */
-function computeMeta(reviews) {
-  const ratingBreakdown = { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 };
-  let ratingSum         = 0;
-  let ratingCount       = 0;
-  let verifiedCount     = 0;
-
-  for (const review of reviews) {
-    if (review.verifiedPurchase) verifiedCount++;
-
-    if (review.rating !== null) {
-      const bucket = Math.round(review.rating);
-      if (bucket >= 1 && bucket <= 5) {
-        ratingBreakdown[bucket]++;
-        ratingSum += review.rating;
-        ratingCount++;
-      }
-    }
-  }
-
-  return {
-    totalReviews:    reviews.length,
-    averageRating:   ratingCount > 0 ? Math.round((ratingSum / ratingCount) * 100) / 100 : null,
-    verifiedCount,
-    ratingBreakdown: Object.freeze(ratingBreakdown),
-  };
 }

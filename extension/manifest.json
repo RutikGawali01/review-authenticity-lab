@@ -1,29 +1,16 @@
 {
   "manifest_version": 3,
   "name": "Review Authenticity Lab",
-  "version": "0.1.0",
-  "description": "Analyzes product reviews on Amazon and Google Play to detect suspicious patterns using on-device AI.",
-
-  "icons": {
-    "16":  "assets/icon16.png",
-    "32":  "assets/icon32.png",
-    "48":  "assets/icon48.png",
-    "128": "assets/icon128.png"
-  },
-
+  "version": "1.0.0",
+  "description": "Analyzes product reviews on e-commerce sites to identify suspicious review patterns.",
+  
   "action": {
-    "default_popup": "ui/popup.html",
-    "default_icon": {
-      "16":  "assets/icon16.png",
-      "32":  "assets/icon32.png",
-      "48":  "assets/icon48.png",
-      "128": "assets/icon128.png"
-    },
+    "default_popup": "dist/extension/ui/popup.html",
     "default_title": "Review Authenticity Lab"
   },
 
   "side_panel": {
-    "default_path": "ui/sidepanel.html"
+    "default_path": "dist/extension/ui/sidepanel.html"
   },
 
   "background": {
@@ -41,43 +28,17 @@
         "https://www.amazon.ca/*",
         "https://play.google.com/store/apps/*"
       ],
-      "js": ["content/content.js"],
-      "run_at": "document_idle",
-      "all_frames": false,
-      "type": "module"
+      "js": [
+        "content/content.js"
+      ],
+      "type": "module",
+      "run_at": "document_idle"
     }
   ],
 
   "permissions": [
-    "storage",
-    "sidePanel",
     "activeTab",
-    "tabs"
-  ],
-
-  "host_permissions": [
-    "https://www.amazon.com/*",
-    "https://www.amazon.in/*",
-    "https://www.amazon.co.uk/*",
-    "https://www.amazon.de/*",
-    "https://www.amazon.ca/*",
-    "https://play.google.com/store/apps/*"
-  ],
-
-  "web_accessible_resources": [
-    {
-      "resources": [
-        "models/*",
-        "assets/*"
-      ],
-      "matches": [
-        "https://www.amazon.com/*",
-        "https://www.amazon.in/*",
-        "https://www.amazon.co.uk/*",
-        "https://www.amazon.de/*",
-        "https://www.amazon.ca/*",
-        "https://play.google.com/store/apps/*"
-      ]
-    }
+    "sidePanel",
+    "storage"
   ]
 }

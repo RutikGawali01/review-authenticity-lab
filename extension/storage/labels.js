@@ -12,7 +12,7 @@
  */
 
 import { put, get, getAllByIndex, remove } from './indexedDb.js';
-import { updateLabel }                      from '../models/label.js';
+import { createManualLabel }                from '../models/manualLabel.js';
 import { DB }                               from '../utils/constants.js';
 
 const STORE = DB.STORES.LABELS;
@@ -22,7 +22,7 @@ const STORE = DB.STORES.LABELS;
 /**
  * Saves a new ManualLabel. Replaces any existing label for the same review.
  *
- * @param {import('../models/label.js').ManualLabel} label
+ * @param {import('../models/manualLabel.js').ManualLabel} label
  * @returns {Promise<void>}
  */
 export async function saveLabel(label) {
@@ -38,7 +38,7 @@ export async function saveLabel(label) {
  * Retrieves the label for a specific review, if one exists.
  *
  * @param {string} reviewId
- * @returns {Promise<import('../models/label.js').ManualLabel|undefined>}
+ * @returns {Promise<import('../models/manualLabel.js').ManualLabel|undefined>}
  */
 export async function getLabelForReview(reviewId) {
   if (!reviewId) throw new Error('[Labels] reviewId is required.');
@@ -51,7 +51,7 @@ export async function getLabelForReview(reviewId) {
  * Retrieves all labels associated with a given product.
  *
  * @param {string} productId
- * @returns {Promise<import('../models/label.js').ManualLabel[]>}
+ * @returns {Promise<import('../models/manualLabel.js').ManualLabel[]>}
  */
 export async function getLabelsForProduct(productId) {
   if (!productId) throw new Error('[Labels] productId is required.');
@@ -66,7 +66,7 @@ export async function getLabelsForProduct(productId) {
  * @param {Object} changes
  * @param {string} [changes.value] - New LABEL_VALUES constant.
  * @param {string} [changes.note]  - New note text.
- * @returns {Promise<import('../models/label.js').ManualLabel>} The updated label.
+ * @returns {Promise<import('../models/manualLabel.js').ManualLabel>} The updated label.
  */
 export async function patchLabel(labelId, changes) {
   if (!labelId) throw new Error('[Labels] labelId is required.');
@@ -77,7 +77,7 @@ export async function patchLabel(labelId, changes) {
     throw new Error(`[Labels] Label not found: ${labelId}`);
   }
 
-  const updated = updateLabel(existing, changes);
+  const updated = createManualLabel({ ...existing, ...changes, updatedAtMs: undefined });
   await put(STORE, updated);
 
   console.debug('[Labels] Updated label:', labelId, '→', updated.value);
