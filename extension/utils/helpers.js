@@ -7,7 +7,7 @@
  * individual behaviors independently testable without a browser environment.
  */
 
-import { SUPPORTED_SITES, PLATFORMS } from './constants.js';
+import { SUPPORTED_SITES, PLATFORMS, AMAZON_PAGE_TYPES } from './constants.js';
 
 // ─── Platform Detection ───────────────────────────────────────────────────────
 
@@ -25,6 +25,28 @@ export function detectPlatform(url) {
   }
 
   return PLATFORMS.UNKNOWN;
+}
+
+/**
+ * Detects the specific Amazon page layout type from a URL.
+ *
+ * @param {string} [url] - Full URL string or current window URL.
+ * @returns {string} Value of AMAZON_PAGE_TYPES.
+ */
+export function detectAmazonPageType(url = typeof window !== 'undefined' ? window.location?.href : '') {
+  if (!url || typeof url !== 'string') return AMAZON_PAGE_TYPES.UNKNOWN;
+
+  const lowercaseUrl = url.toLowerCase();
+
+  if (lowercaseUrl.includes('/dp/') || lowercaseUrl.includes('/gp/product/')) {
+    return AMAZON_PAGE_TYPES.PRODUCT_PAGE;
+  }
+
+  if (lowercaseUrl.includes('/product-reviews/') || lowercaseUrl.includes('/portal/customer-reviews/')) {
+    return AMAZON_PAGE_TYPES.REVIEWS_PAGE;
+  }
+
+  return AMAZON_PAGE_TYPES.UNKNOWN;
 }
 
 /**

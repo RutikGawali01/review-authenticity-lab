@@ -1,11 +1,11 @@
 import React, { useState, useEffect } from 'react';
-import Header from '../components/Header.jsx';
-import Button from '../components/Button.jsx';
-import Loader from '../components/Loader.jsx';
-import ErrorState from '../components/ErrorState.jsx';
-import MetricCard from '../components/MetricCard.jsx';
-import { getPageStatus, startAnalysis, openSidePanel } from '../services/extensionService.js';
-import { ANALYSIS_STATUS, PLATFORMS, PLATFORM_LABELS } from '../../extension/utils/constants.js';
+import Header from '../../../src/components/Header.jsx';
+import Button from '../../../src/components/Button.jsx';
+import Loader from '../../../src/components/Loader.jsx';
+import ErrorState from '../../../src/components/ErrorState.jsx';
+import MetricCard from '../../../src/components/MetricCard.jsx';
+import { getPageStatus, startAnalysis, openSidePanel } from '../../../src/services/extensionService.js';
+import { ANALYSIS_STATUS, PLATFORMS, PLATFORM_LABELS } from '../../utils/constants.js';
 
 export default function PopupApp() {
   const [status, setStatus] = useState(ANALYSIS_STATUS.IDLE);

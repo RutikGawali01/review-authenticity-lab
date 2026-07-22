@@ -16,6 +16,13 @@ export const PLATFORMS = Object.freeze({
   UNKNOWN:     'unknown',
 });
 
+/** Amazon layout page types for target selector profile matching. */
+export const AMAZON_PAGE_TYPES = Object.freeze({
+  PRODUCT_PAGE: 'PRODUCT_PAGE',
+  REVIEWS_PAGE: 'REVIEWS_PAGE',
+  UNKNOWN:      'UNKNOWN',
+});
+
 /**
  * Maps hostname substrings to platform identifiers.
  * Checked in order — first match wins.
@@ -30,32 +37,30 @@ export const SUPPORTED_SITES = Object.freeze([
 /**
  * Typed message contracts for chrome.runtime.sendMessage / postMessage.
  * Convention: "DOMAIN/ACTION" — makes log traces self-explanatory.
+ * All messages MUST use the `type` field.
  */
 export const MSG = Object.freeze({
-  // Content → Background
-  PAGE_DETECTED:        'PAGE/DETECTED',
-  REVIEWS_EXTRACTED:    'REVIEWS/EXTRACTED',
-  EXTRACTION_FAILED:    'EXTRACTION/FAILED',
+  // System
+  PING:                 'SYSTEM/PING',
+  ERROR:                'SYSTEM/ERROR',
 
-  // Popup → Background
-  ANALYSIS_START:       'ANALYSIS/START',
-  OPEN_SIDE_PANEL:      'UI/OPEN_SIDE_PANEL',
+  // Popup → Background / Background → Popup
   GET_PAGE_STATUS:      'PAGE/GET_STATUS',
-
-  // Side Panel → Background
-  GET_SNAPSHOT:         'SNAPSHOT/GET',
-  GET_LATEST_SNAPSHOT:  'SNAPSHOT/GET_LATEST',
-
-  // Background → Content
-  EXTRACT_NOW:          'EXTRACTION/EXTRACT_NOW',
-
-  // Background → Popup / Side Panel
   PAGE_STATUS_RESULT:   'PAGE/STATUS_RESULT',
+  ANALYSIS_START:       'ANALYSIS/START',
   ANALYSIS_COMPLETE:    'ANALYSIS/COMPLETE',
   ANALYSIS_PROGRESS:    'ANALYSIS/PROGRESS',
   ANALYSIS_ERROR:       'ANALYSIS/ERROR',
 
-  // Background → Side Panel
+  // Background → Content Script / Content → Background
+  EXTRACT_REVIEWS:      'EXTRACTION/EXTRACT_REVIEWS',
+  REVIEWS_EXTRACTED:    'EXTRACTION/REVIEWS_EXTRACTED',
+  EXTRACTION_FAILED:    'EXTRACTION/EXTRACTION_FAILED',
+
+  // UI & Side Panel
+  OPEN_SIDE_PANEL:      'UI/OPEN_SIDE_PANEL',
+  GET_SNAPSHOT:         'SNAPSHOT/GET',
+  GET_LATEST_SNAPSHOT:  'SNAPSHOT/GET_LATEST',
   SNAPSHOT_READY:       'SNAPSHOT/READY',
 });
 

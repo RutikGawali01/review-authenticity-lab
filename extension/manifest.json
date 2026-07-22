@@ -3,19 +3,14 @@
   "name": "Review Authenticity Lab",
   "version": "1.0.0",
   "description": "Analyzes product reviews on e-commerce sites to identify suspicious review patterns.",
-  
+
   "action": {
-    "default_popup": "dist/extension/ui/popup.html",
+    "default_popup": "ui/popup.html",
     "default_title": "Review Authenticity Lab"
   },
 
-  "side_panel": {
-    "default_path": "dist/extension/ui/sidepanel.html"
-  },
-
   "background": {
-    "service_worker": "background/background.js",
-    "type": "module"
+    "service_worker": "background/background.js"
   },
 
   "content_scripts": [
@@ -31,14 +26,15 @@
       "js": [
         "content/content.js"
       ],
-      "type": "module",
       "run_at": "document_idle"
     }
   ],
 
   "permissions": [
     "activeTab",
-    "sidePanel",
-    "storage"
-  ]
+    "sidePanel"
+  ],
+  "side_panel": {
+    "default_path": "ui/sidepanel.html"
+  }
 }

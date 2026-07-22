@@ -118,11 +118,16 @@ review-authenticity-lab/
 ## Installation (Development)
 
 1. Clone the repository.
-2. Open Chrome and navigate to `chrome://extensions`.
-3. Enable **Developer mode** (top right toggle).
-4. Click **Load unpacked** and select the `extension/` directory.
-5. Navigate to an Amazon product page or Google Play app page.
-6. Click the extension icon in the toolbar.
+2. Install dependencies and build the extension:
+   ```bash
+   npm install
+   npm run build
+   ```
+3. Open Chrome and navigate to `chrome://extensions`.
+4. Enable **Developer mode** (top right toggle).
+5. Click **Load unpacked** and select the **`dist/`** directory.
+6. Navigate to an Amazon product page or Google Play app page.
+7. Click the extension icon in the toolbar.
 
 ---
 

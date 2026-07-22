@@ -1,20 +1,20 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import Header from '../components/Header.jsx';
-import Button from '../components/Button.jsx';
-import Loader from '../components/Loader.jsx';
-import ErrorState from '../components/ErrorState.jsx';
-import EmptyState from '../components/EmptyState.jsx';
-import SignalBadge from '../components/SignalBadge.jsx';
-import MetricCard from '../components/MetricCard.jsx';
-import SummaryCard from '../components/SummaryCard.jsx';
-import ReviewCard from '../components/ReviewCard.jsx';
-import SectionTitle from '../components/SectionTitle.jsx';
+import Header from '../../../src/components/Header.jsx';
+import Button from '../../../src/components/Button.jsx';
+import Loader from '../../../src/components/Loader.jsx';
+import ErrorState from '../../../src/components/ErrorState.jsx';
+import EmptyState from '../../../src/components/EmptyState.jsx';
+import SignalBadge from '../../../src/components/SignalBadge.jsx';
+import MetricCard from '../../../src/components/MetricCard.jsx';
+import SummaryCard from '../../../src/components/SummaryCard.jsx';
+import ReviewCard from '../../../src/components/ReviewCard.jsx';
+import SectionTitle from '../../../src/components/SectionTitle.jsx';
 import { 
   getLatestSnapshot, 
   getSnapshot, 
   subscribeToSnapshotReady 
-} from '../services/extensionService.js';
-import { PLATFORM_LABELS, SEVERITY } from '../../extension/utils/constants.js';
+} from '../../../src/services/extensionService.js';
+import { PLATFORM_LABELS, SEVERITY } from '../../utils/constants.js';
 
 export default function SidepanelApp() {
   const [snapshot, setSnapshot] = useState(null);
@@ -75,7 +75,6 @@ export default function SidepanelApp() {
     setLoading(false);
   };
 
-  // Compute overall risk using useMemo
   const overallRisk = useMemo(() => {
     if (!signals.length) return SEVERITY.LOW;
     if (signals.some(s => s.severity === SEVERITY.HIGH)) return SEVERITY.HIGH;
@@ -83,7 +82,6 @@ export default function SidepanelApp() {
     return SEVERITY.LOW;
   }, [signals]);
 
-  // Filter signals based on active filter button
   const filteredSignals = useMemo(() => {
     if (filter === 'all') return signals;
     return signals.filter(s => s.severity === filter);
