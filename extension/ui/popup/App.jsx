@@ -5,6 +5,7 @@ import Loader from '../../../src/components/Loader.jsx';
 import ErrorState from '../../../src/components/ErrorState.jsx';
 import MetricCard from '../../../src/components/MetricCard.jsx';
 import { getPageStatus, startAnalysis, openSidePanel } from '../../../src/services/extensionService.js';
+import { createAndSaveSnapshot, loadSnapshots } from '../../../src/services/snapshotService.js';
 import { ANALYSIS_STATUS, PLATFORMS, PLATFORM_LABELS } from '../../utils/constants.js';
 
 export default function PopupApp() {
@@ -14,40 +15,84 @@ export default function PopupApp() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
+  // Holds the last successful analysis result so the Save button can use it.
+  const [lastResult, setLastResult] = useState(null);
+
+  // Save Snapshot button state
+  const [saving, setSaving] = useState(false);
+  const [saveMessage, setSaveMessage] = useState(null); // { type: 'success'|'error', text: string }
+
   useEffect(() => {
-    fetchPageStatus();
+    let isMounted = true;
+
+    fetchPageStatus(isMounted);
+    fetchSavedSnapshots();
+
+    return () => { isMounted = false; };
   }, []);
 
-  const fetchPageStatus = async () => {
+  const fetchPageStatus = async (isMounted = true) => {
     setLoading(true);
     setError(null);
 
     const response = await getPageStatus();
+    if (!isMounted) return;
 
     if (response?.success && response.payload) {
       const { platform: plt, analysisState, context } = response.payload;
-      setPlatform(plt || PLATFORMS.UNKNOWN);
-      setStatus(analysisState || ANALYSIS_STATUS.IDLE);
-      if (context?.productTitle) {
-        setProductTitle(context.productTitle);
-      }
+      setPlatform(plt ?? PLATFORMS.UNKNOWN);
+      setStatus(analysisState ?? ANALYSIS_STATUS.IDLE);
+      if (context?.productTitle) setProductTitle(context.productTitle);
     } else {
-      setError(response?.error || 'Could not connect to extension background worker.');
+      setError(response?.error ?? 'Could not connect to extension background worker.');
     }
     setLoading(false);
+  };
+
+  /**
+   * Loads saved snapshot metadata on popup startup.
+   * Prints a summary to the console. Does not load reviews into memory.
+   */
+  const fetchSavedSnapshots = async () => {
+    try {
+      const snapshots = await loadSnapshots();
+      console.log(`[PopupApp] Loaded ${snapshots.length} saved snapshot(s).`, snapshots);
+    } catch (err) {
+      console.error('[PopupApp] Failed to load snapshots:', err);
+    }
   };
 
   const handleAnalyzeClick = async () => {
     setStatus(ANALYSIS_STATUS.EXTRACTING);
     setError(null);
+    setLastResult(null);
+    setSaveMessage(null);
 
     const response = await startAnalysis();
 
     if (response?.success) {
       setStatus(ANALYSIS_STATUS.COMPLETE);
+      setLastResult(buildLastResult(response.payload, platform));
     } else {
       setStatus(ANALYSIS_STATUS.ERROR);
       setError(response?.error || 'Analysis execution failed.');
+    }
+  };
+
+  const handleSaveClick = async () => {
+    if (!lastResult || saving) return;
+
+    setSaving(true);
+    setSaveMessage(null);
+
+    try {
+      await createAndSaveSnapshot(lastResult.product, lastResult.reviews);
+      setSaveMessage({ type: 'success', text: 'Snapshot Saved' });
+    } catch (err) {
+      console.error('[PopupApp] Snapshot save failed:', err);
+      setSaveMessage({ type: 'error', text: 'Failed to save. Please try again.' });
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -60,6 +105,7 @@ export default function PopupApp() {
 
   const isSupported = platform !== PLATFORMS.UNKNOWN;
   const isAnalyzing = status === ANALYSIS_STATUS.EXTRACTING || status === ANALYSIS_STATUS.ANALYZING;
+  const showSaveButton = status === ANALYSIS_STATUS.COMPLETE && lastResult !== null;
 
   return (
     <div className="w-72 bg-slate-900 text-slate-100 p-4 font-sans antialiased min-h-[260px] flex flex-col justify-between border border-slate-800 rounded-xl shadow-2xl">
@@ -106,6 +152,24 @@ export default function PopupApp() {
             {isAnalyzing ? 'Analyzing...' : 'Analyze Reviews'}
           </Button>
 
+          {showSaveButton && (
+            <Button
+              onClick={handleSaveClick}
+              disabled={saving}
+              variant="secondary"
+            >
+              {saving ? 'Saving...' : 'Save Snapshot'}
+            </Button>
+          )}
+
+          {saveMessage && (
+            <p className={`text-[11px] text-center font-medium ${
+              saveMessage.type === 'success' ? 'text-emerald-400' : 'text-red-400'
+            }`}>
+              {saveMessage.text}
+            </p>
+          )}
+
           <Button 
             onClick={handleOpenPanelClick} 
             variant="secondary"
@@ -116,4 +180,31 @@ export default function PopupApp() {
       )}
     </div>
   );
+}
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
+/**
+ * Extracts the product + reviews data from a successful background analysis payload
+ * and maps it to the shape expected by snapshotService.
+ *
+ * @param {Object} payload - Background response payload from ANALYSIS_START
+ * @param {string} platform - Detected platform identifier
+ * @returns {{ product: Object, reviews: Object[] }}
+ */
+function buildLastResult(payload, platform) {
+  if (!payload) return null;
+
+  const product = {
+    title:    payload.pageTitle ?? '',
+    url:      payload.url      ?? '',
+    platform: platform         ?? '',
+    image:    '',
+    price:    '',
+  };
+
+  return {
+    product,
+    reviews: Array.isArray(payload.reviews) ? payload.reviews : [],
+  };
 }
