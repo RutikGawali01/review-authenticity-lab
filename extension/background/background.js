@@ -1,3 +1,7 @@
+console.log("BACKGROUND START");
+
+
+
 /**
  * @module background/background
  * @description Central message router and background orchestrator for Review Authenticity Lab.
@@ -5,9 +9,12 @@
  * deduplicated review merging, and structured diagnostic logging.
  */
 
-import { MSG, PLATFORMS, ANALYSIS_STATUS, LIMITS, MAX_REVIEWS } from '../utils/constants.js';
+import { MSG, PLATFORMS, ANALYSIS_STATUS, LIMITS, MAX_REVIEWS, STORAGE_KEYS } from '../utils/constants.js';
 import { detectPlatform } from '../utils/helpers.js';
 import { mergeReviews } from '../utils/mergeReviews.js';
+import { analyzeReviews } from '../analysis/pipeline/reviewAnalysisPipeline.js';
+// import { generateSummary } from '../analysis/summary/index.js';
+import { generateSummary } from '../analysis/summary/generateSummary.js';
 
 console.log('[Background] Service worker initialized.');
 
@@ -66,11 +73,40 @@ async function handleGetPageStatus() {
 
   const platform = detectPlatform(activeTab.url);
 
+  let analysisState = ANALYSIS_STATUS.IDLE;
+  let lastResult = null;
+
+  try {
+    const stored = await chrome.storage.local.get([STORAGE_KEYS.ANALYSIS_STATE]);
+    const storedData = stored[STORAGE_KEYS.ANALYSIS_STATE];
+
+    if (storedData) {
+      if (typeof storedData === 'string') {
+        analysisState = storedData;
+      } else if (storedData.reviews && Array.isArray(storedData.reviews)) {
+        analysisState = ANALYSIS_STATUS.COMPLETE;
+        lastResult = {
+          product: {
+            title: storedData.pageTitle ?? activeTab.title ?? '',
+            url: storedData.url ?? activeTab.url ?? '',
+            platform,
+            image: '',
+            price: '',
+          },
+          reviews: storedData.reviews,
+        };
+      }
+    }
+  } catch (err) {
+    console.warn('[Background] Error reading stored analysis state:', err);
+  }
+
   return {
     success: true,
     payload: {
       platform,
-      analysisState: ANALYSIS_STATUS.IDLE,
+      analysisState,
+      lastResult,
       context: {
         url: activeTab.url,
         productTitle: activeTab.title || '',
@@ -189,14 +225,34 @@ async function handleAnalysisStart() {
     }
 
     console.log(`[Background] Pagination completed. Total pages: ${pagesProcessed}, Total merged reviews: ${accumulatedReviews.length}.`);
+    console.log('[Background] Extraction completed');
+
+    // 2. Execute analysis pipeline across extracted reviews
+    const analyzedReviews = await analyzeReviews(accumulatedReviews);
+
+    // 3. Generate summary report
+    const summary = generateSummary(analyzedReviews);
+    console.log('[Background] Summary generated');
+
+    // 4. Save final analysis result to chrome.storage.local
+    const analysisResult = {
+      reviews: analyzedReviews,
+      summary,
+      url: activeTab.url,
+      pageTitle: activeTab.title,
+      timestamp: Date.now(),
+    };
+    await chrome.storage.local.set({ [STORAGE_KEYS.ANALYSIS_STATE]: analysisResult });
+    console.log('[Background] Analysis saved');
 
     return {
       success: true,
       payload: {
         status: ANALYSIS_STATUS.COMPLETE,
-        reviewsCount: accumulatedReviews.length,
+        reviewsCount: analyzedReviews.length,
         pagesProcessed,
-        reviews: accumulatedReviews,
+        reviews: analyzedReviews,
+        summary,
         url: activeTab.url,
         pageTitle: activeTab.title,
       },

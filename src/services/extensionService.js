@@ -4,7 +4,7 @@
  * React views consume these async functions without calling chrome.runtime directly.
  */
 
-import { MSG } from '../../extension/utils/constants.js';
+import { MSG, STORAGE_KEYS } from '../../extension/utils/constants.js';
 
 /**
  * Queries the background worker for the active page status and context.
@@ -74,6 +74,29 @@ export function subscribeToSnapshotReady(callback) {
   return () => {
     chrome.runtime.onMessage.removeListener(listener);
   };
+}
+
+/**
+ * Loads stored analysisResult directly from chrome.storage.local.
+ *
+ * @returns {Promise<{ success: boolean, payload?: Object, error?: string }>}
+ */
+export async function getStoredAnalysisState() {
+  return new Promise((resolve) => {
+    if (typeof chrome === 'undefined' || !chrome.storage?.local) {
+      resolve({ success: false, error: 'chrome.storage.local API unavailable.' });
+      return;
+    }
+
+    chrome.storage.local.get([STORAGE_KEYS.ANALYSIS_STATE], (result) => {
+      if (chrome.runtime.lastError) {
+        resolve({ success: false, error: chrome.runtime.lastError.message });
+      } else {
+        const state = result[STORAGE_KEYS.ANALYSIS_STATE];
+        resolve({ success: true, payload: state || null });
+      }
+    });
+  });
 }
 
 // ─── Private Helpers ──────────────────────────────────────────────────────────
