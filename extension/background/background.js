@@ -1,11 +1,13 @@
 /**
  * @module background/background
  * @description Central message router and background orchestrator for Review Authenticity Lab.
- * Coordinates communication between Popup, Side Panel, and Tab Content Scripts.
+ * Manages the NavigationPaginator loop: tab navigations via chrome.tabs.update, visitedUrl Set loop protection,
+ * deduplicated review merging, and structured diagnostic logging.
  */
 
-import { MSG, PLATFORMS, ANALYSIS_STATUS } from '../utils/constants.js';
+import { MSG, PLATFORMS, ANALYSIS_STATUS, LIMITS, MAX_REVIEWS } from '../utils/constants.js';
 import { detectPlatform } from '../utils/helpers.js';
+import { mergeReviews } from '../utils/mergeReviews.js';
 
 console.log('[Background] Service worker initialized.');
 
@@ -23,15 +25,11 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       sendResponse({ success: false, error: err.message || 'Internal background error.' });
     });
 
-  return true; // Keep message channel open for async sendResponse
+  return true; // Keep message channel open for async response
 });
 
 /**
  * Routes incoming typed messages to dedicated handlers.
- *
- * @param {Object} message - Incoming message payload containing `type`.
- * @param {chrome.runtime.MessageSender} sender
- * @returns {Promise<Object>} Response object.
  */
 async function handleMessage(message, sender) {
   if (!message || typeof message !== 'object' || !message.type) {
@@ -59,8 +57,6 @@ async function handleMessage(message, sender) {
 
 /**
  * Gets the current page status, detected platform, and tab context.
- *
- * @returns {Promise<Object>}
  */
 async function handleGetPageStatus() {
   const activeTab = await getActiveTab();
@@ -85,9 +81,8 @@ async function handleGetPageStatus() {
 }
 
 /**
- * Coordinates review extraction by sending EXTRACT_REVIEWS to the active tab's content script.
- *
- * @returns {Promise<Object>}
+ * Coordinates multi-page review extraction across tab navigations (NavigationPaginator).
+ * Manages accumulatedReviews, pagesProcessed, and visitedUrls loop protection.
  */
 async function handleAnalysisStart() {
   console.log('[Background] Received ANALYSIS_START request.');
@@ -102,43 +97,129 @@ async function handleAnalysisStart() {
     return { success: false, error: 'Current page is not a supported review platform (Amazon or Google Play required).' };
   }
 
-  console.log(`[Background] Sending EXTRACT_REVIEWS to tab ${activeTab.id}...`);
+  const maxPages = LIMITS.MAX_PAGINATION_PAGES || 30;
+  const maxReviews = LIMITS.MAX_PAGINATION_REVIEWS || MAX_REVIEWS;
+
+  let accumulatedReviews = [];
+  let pagesProcessed = 0;
+  const visitedUrls = new Set();
+  let currentTabId = activeTab.id;
+  let targetUrl = activeTab.url;
 
   try {
-    const contentResponse = await sendTabMessage(activeTab.id, { type: MSG.EXTRACT_REVIEWS });
+    while (targetUrl && pagesProcessed < maxPages && accumulatedReviews.length < maxReviews) {
+      if (visitedUrls.has(targetUrl)) {
+        console.warn(`[Background] Stopping pagination: URL already visited (${targetUrl}).`);
+        break;
+      }
+      visitedUrls.add(targetUrl);
 
-    if (!contentResponse || !contentResponse.success) {
-      const errMsg = contentResponse?.error || 'Content script failed to extract reviews.';
-      console.error('[Background] Extraction error from content script:', errMsg);
-      return { success: false, error: errMsg };
+      pagesProcessed++;
+
+      if (pagesProcessed > 1) {
+        console.log(`[Background] Navigating to page ${pagesProcessed}`);
+        await navigateTabAndWait(currentTabId, targetUrl);
+        console.log('[Background] Navigation complete');
+      } else {
+        console.log(`[Background] Navigating to page 1`);
+        console.log('[Background] Navigation complete');
+      }
+
+      console.log('[Background] Waiting for content script');
+      const isReady = await waitForContentReady(currentTabId);
+      if (!isReady) {
+        console.warn(`[Background] Content script not ready on page ${pagesProcessed}. Returning partial results.`);
+        break;
+      }
+
+      console.log('[Background] Starting extraction');
+      const contentResponse = await sendTabMessage(currentTabId, {
+        type: MSG.EXTRACT_REVIEWS,
+        maxReviews,
+        visitedUrls: Array.from(visitedUrls),
+      });
+
+      if (!contentResponse || !contentResponse.success) {
+        const errMsg = contentResponse?.error || 'Content script failed to extract reviews.';
+        console.warn(`[Background] Extraction warning on page ${pagesProcessed}: ${errMsg}`);
+        break;
+      }
+
+      if (contentResponse.url && targetUrl) {
+        verifyCurrentUrl(targetUrl, contentResponse.url);
+      }
+
+      const pageReviews = contentResponse.reviews || [];
+      console.log(`[Background] ${pageReviews.length} reviews extracted`);
+
+      if (pageReviews.length === 0) {
+        console.warn(`[Background] Extraction returned zero reviews after retries on page ${pagesProcessed}. Returning partial results.`);
+        break;
+      }
+
+      const countBefore = accumulatedReviews.length;
+      accumulatedReviews = mergeReviews(accumulatedReviews, pageReviews);
+      const countAfter = accumulatedReviews.length;
+
+      console.log(`[Background] Merged ${countAfter - countBefore} new reviews`);
+      console.log(`[Background] Total Reviews: ${accumulatedReviews.length}`);
+
+      const nextPageUrl = contentResponse.nextPageUrl;
+
+      if (!nextPageUrl) {
+        console.log('[Background] No nextPageUrl returned. Pagination complete.');
+        break;
+      }
+
+      if (visitedUrls.has(nextPageUrl)) {
+        console.log(`[Background] Next page URL already visited: ${nextPageUrl}. Stopping pagination.`);
+        break;
+      }
+
+      if (pagesProcessed >= maxPages || accumulatedReviews.length >= maxReviews) {
+        console.log(`[Background] Limit reached (Pages: ${pagesProcessed}/${maxPages}, Reviews: ${accumulatedReviews.length}/${maxReviews}). Stopping pagination.`);
+        break;
+      }
+
+      targetUrl = nextPageUrl;
     }
 
-    console.log(`[Background] Received ${contentResponse.reviewsCount} reviews from content script. Forwarding results to popup.`);
+    if (accumulatedReviews.length > maxReviews) {
+      accumulatedReviews = accumulatedReviews.slice(0, maxReviews);
+    }
+
+    console.log(`[Background] Pagination completed. Total pages: ${pagesProcessed}, Total merged reviews: ${accumulatedReviews.length}.`);
 
     return {
       success: true,
       payload: {
         status: ANALYSIS_STATUS.COMPLETE,
-        reviewsCount: contentResponse.reviewsCount || 0,
-        reviews: contentResponse.reviews || [],
-        url: contentResponse.url || activeTab.url,
-        pageTitle: contentResponse.pageTitle || activeTab.title,
+        reviewsCount: accumulatedReviews.length,
+        pagesProcessed,
+        reviews: accumulatedReviews,
+        url: activeTab.url,
+        pageTitle: activeTab.title,
       },
     };
   } catch (err) {
-    console.error('[Background] Messaging error with content script:', err.message);
+    console.error('[Background] Multi-page navigation error:', err.message);
     return {
-      success: false,
-      error: 'Content script not responding. Please refresh the product page and try again.',
+      success: accumulatedReviews.length > 0,
+      payload: accumulatedReviews.length > 0 ? {
+        status: ANALYSIS_STATUS.COMPLETE,
+        reviewsCount: accumulatedReviews.length,
+        pagesProcessed,
+        reviews: accumulatedReviews,
+        url: activeTab.url,
+        pageTitle: activeTab.title,
+      } : undefined,
+      error: accumulatedReviews.length === 0 ? 'Failed to complete review extraction.' : undefined,
     };
   }
 }
 
 /**
  * Opens the extension side panel for the current window.
- *
- * @param {chrome.runtime.MessageSender} sender
- * @returns {Promise<Object>}
  */
 async function handleOpenSidePanel(sender) {
   try {
@@ -157,9 +238,142 @@ async function handleOpenSidePanel(sender) {
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 /**
+ * Waits for content script readiness handshake (PING -> READY/PONG).
+ */
+async function waitForContentReady(tabId, maxRetries = 5, retryIntervalMs = 500) {
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      const response = await sendTabMessage(tabId, { type: MSG.PING });
+      if (response && response.success && (response.payload?.status === 'READY' || response.payload?.status === 'PONG')) {
+        console.log('[Background] Content ready');
+        return true;
+      }
+    } catch {
+      // Content script not listening yet
+    }
+
+    if (attempt === 1) {
+      await ensureContentScriptInjected(tabId);
+    } else {
+      await new Promise((r) => setTimeout(r, retryIntervalMs));
+    }
+  }
+
+  console.warn('[Background] Timed out waiting for content script readiness');
+  return false;
+}
+
+/**
+ * Verifies current page URL matches expected URL and logs redirects.
+ */
+function verifyCurrentUrl(expectedUrl, actualUrl) {
+  if (!expectedUrl || !actualUrl) return;
+  const normalize = (u) => {
+    try {
+      const parsed = new URL(u);
+      parsed.hash = '';
+      let href = parsed.href.toLowerCase();
+      if (href.endsWith('/')) href = href.slice(0, -1);
+      return href;
+    } catch {
+      return u.trim().toLowerCase();
+    }
+  };
+
+  if (normalize(expectedUrl) !== normalize(actualUrl)) {
+    console.log(`[Background] Expected URL: ${expectedUrl}`);
+    console.log(`[Background] Actual URL: ${actualUrl}`);
+  }
+}
+
+/**
+ * Ensures the content script is active and listening on the specified tab.
+ * Programmatically injects `content/content.js` on-demand if PING fails.
+ */
+async function ensureContentScriptInjected(tabId) {
+  try {
+    const response = await sendTabMessage(tabId, { type: MSG.PING });
+    if (response?.success && (response.payload?.status === 'READY' || response.payload?.status === 'PONG')) {
+      return true;
+    }
+  } catch {
+    // Content script not listening yet
+  }
+
+  console.log(`[Background] Programmatically executing content/content.js on tab ${tabId}...`);
+  try {
+    if (chrome.scripting && typeof chrome.scripting.executeScript === 'function') {
+      await chrome.scripting.executeScript({
+        target: { tabId },
+        files: ['content/content.js'],
+      });
+    }
+  } catch (err) {
+    console.warn(`[Background] Programmatic injection warning on tab ${tabId}:`, err.message);
+  }
+
+  return waitForContentScriptPing(tabId, 3000, 150);
+}
+
+/**
+ * Pings content script in a polling loop until PONG/READY is received or maxTimeoutMs expires.
+ */
+async function waitForContentScriptPing(tabId, maxTimeoutMs = 3000, pollIntervalMs = 150) {
+  const startTime = Date.now();
+
+  while (Date.now() - startTime < maxTimeoutMs) {
+    try {
+      const response = await sendTabMessage(tabId, { type: MSG.PING });
+      if (response && response.success && (response.payload?.status === 'READY' || response.payload?.status === 'PONG')) {
+        return true;
+      }
+    } catch {
+      // Content script not ready yet
+    }
+
+    await new Promise((r) => setTimeout(r, pollIntervalMs));
+  }
+
+  return false;
+}
+
+/**
+ * Navigates a tab to a new URL and waits for document_idle loading completion.
+ */
+function navigateTabAndWait(tabId, url) {
+  return new Promise((resolve, reject) => {
+    if (typeof chrome === 'undefined' || !chrome.tabs?.update) {
+      reject(new Error('chrome.tabs.update API unavailable.'));
+      return;
+    }
+
+    let timeoutTimer = setTimeout(() => {
+      chrome.tabs.onUpdated.removeListener(listener);
+      resolve();
+    }, 15000);
+
+    const listener = (updatedTabId, changeInfo) => {
+      if (updatedTabId === tabId && changeInfo.status === 'complete') {
+        chrome.tabs.onUpdated.removeListener(listener);
+        clearTimeout(timeoutTimer);
+        resolve();
+      }
+    };
+
+    chrome.tabs.onUpdated.addListener(listener);
+
+    chrome.tabs.update(tabId, { url }, () => {
+      if (chrome.runtime.lastError) {
+        chrome.tabs.onUpdated.removeListener(listener);
+        clearTimeout(timeoutTimer);
+        reject(new Error(chrome.runtime.lastError.message));
+      }
+    });
+  });
+}
+
+/**
  * Queries Chrome tabs API for the currently active tab in the focused window.
- *
- * @returns {Promise<chrome.tabs.Tab|null>}
  */
 function getActiveTab() {
   return new Promise((resolve) => {
@@ -181,10 +395,6 @@ function getActiveTab() {
 
 /**
  * Sends a message to a specific tab's content script safely wrapped in a promise.
- *
- * @param {number} tabId
- * @param {Object} message
- * @returns {Promise<Object>}
  */
 function sendTabMessage(tabId, message) {
   return new Promise((resolve, reject) => {

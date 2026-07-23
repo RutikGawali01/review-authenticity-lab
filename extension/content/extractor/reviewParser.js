@@ -1,15 +1,30 @@
 /**
  * @module content/extractor/reviewParser
  * @description Single-pass parser for a review DOM container.
- * Extracts normalized review fields with candidate fallbacks and strict validation.
+ * Extracts normalized review fields with candidate fallbacks, international locale resilience,
+ * and strict output type contracts.
+ */
+
+/**
+ * @typedef {Object} NormalizedReview
+ * @property {string}      reviewId         - Unique review identifier (or hash).
+ * @property {string}      reviewTitle      - Extracted review headline/title.
+ * @property {string}      reviewText       - Sanitized review body text.
+ * @property {number|null} rating           - Numeric rating (1.0 - 5.0) or null if missing.
+ * @property {string}      reviewer         - Reviewer display name.
+ * @property {string}      reviewDate       - Raw date statement string.
+ * @property {boolean}     verifiedPurchase - True if verified purchase badge exists.
+ * @property {number}      helpfulVotes     - Non-negative integer count of helpful votes.
+ * @property {string}      profileLink      - Absolute URL to reviewer profile.
  */
 
 /**
  * Parses a single review container DOM element using a selector profile.
+ * Guarantees a consistent output object shape with no undefined properties.
  *
  * @param {Element} container - The DOM element representing a review card.
- * @param {Object} selectors - Field selector profile containing candidate arrays.
- * @returns {Object|null} Normalized Review object, or null if validation fails.
+ * @param {Object} [selectors={}] - Field selector profile containing candidate arrays.
+ * @returns {NormalizedReview|null} Normalized Review object, or null if validation fails.
  */
 export function parseReview(container, selectors = {}) {
   if (!container || !(container instanceof Element)) {
@@ -32,24 +47,24 @@ export function parseReview(container, selectors = {}) {
   const helpfulVotes = parseHelpfulVotes(container, selectors.helpful);
   const profileLink = extractProfileLink(container, selectors.profileLink);
 
-  return {
-    reviewId,
-    reviewTitle,
-    reviewText,
-    rating,
-    reviewer,
-    reviewDate,
-    verifiedPurchase,
-    helpfulVotes,
-    profileLink,
-  };
+  return Object.freeze({
+    reviewId: reviewId || `rev_${hashString(`${reviewer}::${reviewText}`)}`,
+    reviewTitle: reviewTitle || '',
+    reviewText: reviewText || '',
+    rating: typeof rating === 'number' && !isNaN(rating) ? rating : null,
+    reviewer: reviewer || '',
+    reviewDate: reviewDate || '',
+    verifiedPurchase: Boolean(verifiedPurchase),
+    helpfulVotes: typeof helpfulVotes === 'number' && helpfulVotes >= 0 ? helpfulVotes : 0,
+    profileLink: profileLink || '',
+  });
 }
 
 // ─── Extraction Helpers ───────────────────────────────────────────────────────
 
 /**
  * Queries the first matching child element for an ordered array of selector candidates.
- * Minimizes DOM traversals by stopping at the first non-null match.
+ * Minimizes DOM traversals by returning on the first non-null match.
  *
  * @param {Element} parent
  * @param {string|string[]} [selectors]
@@ -78,7 +93,8 @@ export function queryFirstMatchingElement(parent, selectors) {
  */
 function extractText(container, selectors) {
   const el = queryFirstMatchingElement(container, selectors);
-  return el?.textContent?.replace(/\s+/g, ' ').trim() ?? '';
+  if (!el) return '';
+  return el.textContent?.replace(/[\x00-\x1F\x7F]/g, ' ').replace(/\s+/g, ' ').trim() ?? '';
 }
 
 /**
@@ -90,6 +106,7 @@ function extractReviewText(container, selectors) {
 
   const rawText = el.textContent || '';
   return rawText
+    .replace(/[\x00-\x1F\x7F]/g, ' ')
     .split(/\r?\n/)
     .map(line => line.replace(/[ \t]+/g, ' ').trim())
     .filter(Boolean)
@@ -117,29 +134,44 @@ function extractReviewId(container, reviewer, reviewText) {
 }
 
 /**
- * Parses numeric rating from star elements or aria-label text (e.g. "4.5 out of 5 stars" -> 4.5).
+ * Parses numeric rating from star elements or aria-label text.
+ * Internationalized to support multiple decimal formats (4.5 / 4,5) and locale strings.
  */
 function parseRating(container, selectors) {
   const el = queryFirstMatchingElement(container, selectors);
   if (!el) return null;
 
   const rawText = el.getAttribute('aria-label') || el.getAttribute('title') || el.textContent || '';
-  const match = rawText.match(/([\d.]+)\s*(?:out of|stars?)/i) || rawText.match(/^([\d.]+)/);
+  if (!rawText) return null;
+
+  // Normalize comma decimal (e.g. "4,5" -> "4.5")
+  const normalizedText = rawText.replace(/(\d),(\d)/g, '$1.$2');
+
+  const match = normalizedText.match(/([\d.]+)\s*(?:out of|von|de|sur|stars?|sternen|estrellas|étoiles?)/i)
+    || normalizedText.match(/^([\d.]+)/);
+
   if (!match) return null;
 
   const num = parseFloat(match[1]);
-  return isNaN(num) ? null : num;
+  if (isNaN(num) || num < 1 || num > 5) return null;
+  return Math.round(num * 10) / 10;
 }
 
 /**
- * Checks for presence of verified purchase badge.
+ * Checks for presence of verified purchase badge across Amazon international locales.
  */
 function isVerifiedPurchase(container, selectors) {
   const el = queryFirstMatchingElement(container, selectors);
   if (!el) return false;
 
   const text = el.textContent?.toLowerCase() || '';
-  if (text.includes('verified purchase') || text.includes('verified')) {
+  if (
+    text.includes('verified purchase') ||
+    text.includes('verified') ||
+    text.includes('verifizierter kauf') ||
+    text.includes('compra verificada') ||
+    text.includes('achat vérifié')
+  ) {
     return true;
   }
 
@@ -153,12 +185,15 @@ function parseHelpfulVotes(container, selectors) {
   const text = extractText(container, selectors);
   if (!text) return 0;
 
-  const match = text.match(/([\d,]+)\s*(?:people|person)/i) || text.match(/^(\d[\d,]*)/);
+  const match = text.match(/([\d,]+)\s*(?:people|person|personas?|nützlich)/i)
+    || text.match(/^(\d[\d,]*)/);
+
   if (match) {
-    return parseInt(match[1].replace(/,/g, ''), 10);
+    const parsed = parseInt(match[1].replace(/,/g, ''), 10);
+    return isNaN(parsed) || parsed < 0 ? 0 : parsed;
   }
 
-  if (/one person|a person/i.test(text)) {
+  if (/one person|a person|une personne/i.test(text)) {
     return 1;
   }
 

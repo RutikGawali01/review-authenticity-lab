@@ -32,7 +32,8 @@
 
   "permissions": [
     "activeTab",
-    "sidePanel"
+    "sidePanel",
+    "scripting"
   ],
   "side_panel": {
     "default_path": "ui/sidepanel.html"

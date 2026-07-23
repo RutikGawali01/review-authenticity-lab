@@ -95,7 +95,7 @@ export function extractReviews(root = typeof document !== 'undefined' ? document
 /**
  * Resolves the target selector profile based on platform and detected page type.
  */
-function resolveProfile(platform, url, overrideProfile) {
+export function resolveProfile(platform, url, overrideProfile) {
   if (overrideProfile && typeof overrideProfile === 'object') {
     return { profile: overrideProfile, pageType: 'CUSTOM', profileName: 'CUSTOM_OVERRIDE' };
   }
@@ -127,7 +127,7 @@ function resolveProfile(platform, url, overrideProfile) {
  * @param {string|string[]} containerSelectors
  * @returns {{ containers: Element[], matchedContainerSelector: string|null }}
  */
-function findReviewContainers(root, containerSelectors) {
+export function findReviewContainers(root, containerSelectors) {
   const candidates = Array.isArray(containerSelectors) ? containerSelectors : [containerSelectors];
 
   for (let i = 0; i < candidates.length; i++) {

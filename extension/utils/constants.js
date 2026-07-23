@@ -149,6 +149,9 @@ export const TIMINGS = Object.freeze({
 
 // ─── Limits ───────────────────────────────────────────────────────────────────
 
+/** Configurable maximum review extraction limit. */
+export const MAX_REVIEWS = 200;
+
 export const LIMITS = Object.freeze({
   /** Maximum number of reviews to process in a single analysis run. */
   MAX_REVIEWS_PER_RUN: 500,
@@ -161,4 +164,8 @@ export const LIMITS = Object.freeze({
 
   /** Maximum snapshots to retain per product before evicting oldest. */
   MAX_SNAPSHOTS_PER_PRODUCT: 30,
+
+  /** Maximum pagination limits for Amazon review extraction. */
+  MAX_PAGINATION_PAGES: 30,
+  MAX_PAGINATION_REVIEWS: MAX_REVIEWS,
 });
